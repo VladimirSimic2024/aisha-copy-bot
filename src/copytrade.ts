@@ -24,7 +24,7 @@ export const processSignature = async (swapInfo: any) => {
         targetSwapInfo.tokenAddress = swapInfo.inputToken;
     }
 
-    if (swapInfo.isPumpfun) {
+    if (swapInfo.isPumpFun) {
         targetSwapInfo.dex = "pumpfun"
     } else {
         targetSwapInfo.dex = "raydium"
