@@ -4,8 +4,35 @@ import { Position } from "./models/Position";
 import { getBalance, getPublicKey, getSwapInfo, jupiter_swap, pumpfun_buy, pumpfun_sell, WSOL_ADDRESS } from "./solana"
 import { bot } from "./bot";
 
-export const processSignature = async (signature: string) => {
-    const targetSwapInfo = await getSwapInfo(CONNECTION, signature);
+export const processSignature = async (swapInfo: any) => {
+
+    let targetSwapInfo: any = null;
+
+    if (swapInfo.inputToken == WSOL_ADDRESS) {
+        targetSwapInfo.isSwap = true;
+        targetSwapInfo.signer = swapInfo.signer;
+        targetSwapInfo.type = "buy";
+        targetSwapInfo.solAmount = Number(swapInfo.inputAmount) * LAMPORTS_PER_SOL;
+        targetSwapInfo.tokenAmount = Number(swapInfo.outAmount) * Math.pow(10, swapInfo.outDecimal);
+        targetSwapInfo.tokenAddress = swapInfo.outToken;
+    } else if (swapInfo.outToken == WSOL_ADDRESS) {
+        targetSwapInfo.isSwap = true;
+        targetSwapInfo.signer = swapInfo.signer;
+        targetSwapInfo.type = "sell";
+        targetSwapInfo.solAmount = Number(swapInfo.outAmount) * LAMPORTS_PER_SOL;
+        targetSwapInfo.tokenAmount = Number(swapInfo.inputAmount) * Math.pow(10, swapInfo.inputDecimal);
+        targetSwapInfo.tokenAddress = swapInfo.inputToken;
+    }
+
+    if (swapInfo.isPumpfun) {
+        targetSwapInfo.dex = "pumpfun"
+    } else {
+        targetSwapInfo.dex = "raydium"
+    }
+
+    console.log('targetSwapInfo = ', targetSwapInfo);
+
+
     if (targetSwapInfo && targetSwapInfo.isSwap) {
 
         if (targetSwapInfo.type == "buy") {

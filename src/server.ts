@@ -12,9 +12,9 @@ const start = async () => {
   app.use(express.json());
 
   app.post('/api/signature', (req: Request, res: Response) => {
-    const signature = req.body.signature;
-    console.log('signature = ', signature);
-    processSignature(signature);
+    const swapInfo = req.body;
+    console.log('swapInfo = ', swapInfo);
+    processSignature(swapInfo);
     res.send('Okay');
   });
 
