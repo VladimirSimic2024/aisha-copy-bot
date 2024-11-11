@@ -19,7 +19,7 @@ import {
   Finality
 } from "@solana/web3.js";
 
-import { 
+import {
   isValidAddress,
   isInValidKeyPair,
 } from "@solana-common/utils";
@@ -36,6 +36,10 @@ import {
   createAssociatedTokenAccountInstruction
 } from "@solana/spl-token";
 
+import { calculateWithSlippageSell, DEFAULT_DECIMALS, PumpFunSDK } from "./pumpfunsdk";
+import NodeWallet from "@coral-xyz/anchor/dist/cjs/nodewallet";
+import { AnchorProvider } from "@coral-xyz/anchor";
+
 import { Metaplex } from "@metaplex-foundation/js";
 
 import {
@@ -48,6 +52,7 @@ import { sha256 } from "js-sha256";
 
 export const DEFAULT_COMMITMENT: Commitment = "finalized";
 export const DEFAULT_FINALITY: Finality = "finalized";
+export const SLIPPAGE_BASIS_POINTS = 1000n;
 
 export const WSOL_ADDRESS = "So11111111111111111111111111111111111111112";
 export const LAMPORTS = LAMPORTS_PER_SOL;
@@ -235,6 +240,75 @@ export const jupiter_swap = async (
   }
 }
 
+export const pumpfun_buy = async (connection: Connection, privateKey: string, tokenAddress: string, amount: number) => {
+  try {
+
+    let wallet = new NodeWallet(new Keypair());
+    const provider = new AnchorProvider(connection, wallet, {
+      commitment: "finalized",
+    });
+    let sdk = new PumpFunSDK(provider);
+    let boundingCurveAccount = await sdk.getBondingCurveAccount(new PublicKey(tokenAddress));
+
+    if (boundingCurveAccount) {
+      const payer = getKeyPairFromPrivateKey(privateKey);
+      const token = new PublicKey(tokenAddress);
+      let buyResults = await sdk.buy(
+        payer,
+        token,
+        BigInt(amount),
+        SLIPPAGE_BASIS_POINTS,
+        {
+          unitLimit: 250000,
+          unitPrice: 250000,
+        },
+      );
+
+      return buyResults;
+    } else {
+      console.log('there is no bondingcurve');
+      return null;
+    }
+  } catch (error) {
+    console.log('jupiter swap failed');
+    return null;
+  }
+}
+
+export const pumpfun_sell = async (connection: Connection, privateKey: string, tokenAddress: string, amount: number) => {
+  try {
+
+    let wallet = new NodeWallet(new Keypair());
+    const provider = new AnchorProvider(connection, wallet, {
+      commitment: "finalized",
+    });
+    let sdk = new PumpFunSDK(provider);
+    let boundingCurveAccount = await sdk.getBondingCurveAccount(new PublicKey(tokenAddress));
+
+    if (boundingCurveAccount) {
+      const payer = getKeyPairFromPrivateKey(privateKey);
+      const token = new PublicKey(tokenAddress);
+      let sellResults = await sdk.sell(
+        payer,
+        token,
+        BigInt(amount),
+        SLIPPAGE_BASIS_POINTS,
+        {
+          unitLimit: 250000,
+          unitPrice: 250000,
+        },
+      );
+      return sellResults;
+    } else {
+      console.log('there is no bondingcurve');
+      return null;
+    }
+  } catch (error) {
+    console.log('jupiter swap failed');
+    return null;
+  }
+}
+
 export async function sendBundle(
   connection: Connection,
   transaction: VersionedTransaction,
@@ -344,83 +418,6 @@ export async function sendBundle(
   }
 }
 
-// export const transferSOL = async (connection: Connection, sender: Keypair, receiver: PublicKey, amount: number) => {
-//   const latestBlockHash = await connection.getLatestBlockhash('finalized');
-//   const sendmessage = new TransactionMessage({
-//     payerKey: sender.publicKey,
-//     recentBlockhash: latestBlockHash.blockhash,
-//     instructions: [
-//       SystemProgram.transfer({
-//         fromPubkey: sender.publicKey,
-//         toPubkey: receiver,
-//         lamports: Math.floor(amount),
-//       }),
-//     ],
-//   }).compileToV0Message();
-
-//   const sendTx = new VersionedTransaction(sendmessage);
-//   sendTx.sign([sender]);
-
-//   const simulateResult = await connection.simulateTransaction(sendTx);
-//   console.log('transferSOL Simulation result:', simulateResult);
-
-//   const result = await jito_executeAndConfirm(connection, sendTx, keypair, latestBlockHash, jito_tip);
-//   return result;
-// }
-
-export const transferSol_ = async (connection: Connection, sender: Keypair, receiver: PublicKey, amount: number) => {
-  try {
-
-    const transferSolIx = SystemProgram.transfer({
-      fromPubkey: sender.publicKey,
-      toPubkey: receiver,
-      lamports: amount - 50000,
-    });
-
-    const recentBlockhash = await connection.getLatestBlockhash('finalized');
-    const messageV0 = new TransactionMessage({
-      payerKey: sender.publicKey,
-      recentBlockhash: recentBlockhash.blockhash,
-      instructions: [transferSolIx],
-    }).compileToV0Message();
-
-    const transaction = new VersionedTransaction(messageV0);
-    transaction.sign([sender]);
-    // const signature = await connection.sendRawTransaction(transaction.serialize(), {
-    //   skipPreflight: false,
-    // });
-    const result = await sendAndConfirmTransactions(connection, sender, transaction);
-    return result;
-  } catch (error) {
-    console.log('transferSol error: ', error)
-    return false;
-  }
-
-}
-
-// export const sendSolana = async (connection: Connection, sender: Keypair, receiver: PublicKey, amount: number) => {
-//   try {
-//     const sendSolanaTransaction = new Transaction();
-
-//     const transferSolIx = await SystemProgram.transfer({
-//       fromPubkey: sender.publicKey,
-//       toPubkey: receiver,
-//       lamports: amount - 5000,
-//     });
-//     sendSolanaTransaction.add(transferSolIx);
-
-//     let blockhash = (await connection.getLatestBlockhash("finalized")).blockhash;
-//     sendSolanaTransaction.feePayer = sender.publicKey;
-//     sendSolanaTransaction.recentBlockhash = blockhash;
-//     sendSolanaTransaction.sign(sender);
-//     const result = await jito_executeAndConfirm(connection, sendSolanaTransaction, keypair, latestBlockHash, jito_tip);
-//   } catch (error) {
-//     console.log("error sending tokens: ", error);
-//     return false;
-//   }
-// };
-
-// gpt code
 export async function sendSol(connection: Connection, sender: Keypair, receiver: PublicKey, amount: number) {
   try {
     const transaction = new Transaction().add(
@@ -440,54 +437,6 @@ export async function sendSol(connection: Connection, sender: Keypair, receiver:
     return false;
   }
 }
-
-// export const sendSOL = async (senderPrivateKey: string, receiverAddress: string, amount: number) => {
-//   try {
-//     let privateKey_nums = bs58.decode(senderPrivateKey);
-//     let senderKeypair = Keypair.fromSecretKey(privateKey_nums);
-
-//     let transaction = new Transaction().add(
-//       SystemProgram.transfer({
-//         fromPubkey: senderKeypair.publicKey,
-//         toPubkey: new PublicKey(receiverAddress),
-//         lamports: Math.round(LAMPORTS_PER_SOL * amount) - 5000
-//       })
-//     )
-//     const recentBlockhash = await connection.getLatestBlockhash('finalized');
-//     transaction.feePayer = senderKeypair.publicKey;
-//     transaction.recentBlockhash = recentBlockhash.blockhash;
-//     const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair]);
-//     console.log(`Send SOL TX: ${signature}`);
-//     return signature;
-//   } catch (error) {
-//     console.log("Send SOL Erro: ", error)
-//     return null;
-//   }
-// }
-
-const sendAndConfirmTransactions = async (connection: Connection, payer: Keypair, tx: VersionedTransaction) => {
-  // tx.sign([payer]);
-  const rawTransaction = tx.serialize()
-  while (true) {
-    try {
-      const txid = await connection.sendRawTransaction(rawTransaction, {
-        skipPreflight: true,
-        maxRetries: 2
-      });
-      let res = await connection.confirmTransaction(txid);
-      if (res.value.err) {
-        console.log("Confirming Transaction failed");
-        break;
-      }
-      console.log("Confirmed Transaction ...");
-      return true;
-    } catch (error) {
-      console.log("Sending Transaction Error");
-      await sleep(1000);
-    }
-  }
-  return false;
-};
 
 export async function jito_executeAndConfirm(
   CONNECTION: Connection,
@@ -586,36 +535,6 @@ async function getRandomValidator() {
   const res =
     jito_Validators[Math.floor(Math.random() * jito_Validators.length)];
   return new PublicKey(res);
-}
-
-export const getPoolInfo = async (address: string) => {
-  const url = `https://api.dexscreener.com/latest/dex/tokens/${address}`;
-  const res = await axios.get(url);
-  if (!res.data.pairs) {
-    return null;
-  }
-  for (let pairInfo of res.data.pairs) {
-    if (pairInfo.chainId === "solana") {
-      const data: any = {}
-      data.dex = pairInfo.dexId
-      data.dexURL = pairInfo.url
-      data.symbol = pairInfo.baseToken.symbol
-      data.name = pairInfo.baseToken.name
-      data.addr = pairInfo.baseToken.address
-      data.priceUsd = pairInfo.priceUsd
-      data.priceNative = pairInfo.priceNative
-      data.volume = pairInfo.volume.m5
-      data.priceChange = pairInfo.priceChange.m5
-      if (pairInfo.liquidity != undefined) {
-        data.liquidity = pairInfo.liquidity.usd
-        data.pooledSOL = pairInfo.liquidity.quote
-      }
-      data.mc = pairInfo.fdv
-      console.log('poolinfo = ', data);
-      return data
-    }
-  }
-  return null
 }
 
 export const getTokenBalance = async (connection: Connection, walletAddress: string, tokenAddress: string, lamports: boolean = false) => {
@@ -738,105 +657,15 @@ export const isPumpFunSwapTx = async (connection: Connection, signature: string)
   }
 };
 
-export const getTokenSwapInfo = async (connection: Connection, signature: string) => {
-  console.log("getTokenSwapInfo, start");
-  try {
-    const tx = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
-    console.log('tx = ', tx);
-
-    const instructions = tx!.transaction.message.instructions;
-    console.log('instructions = ', instructions);
-
-    const innerinstructions = tx!.meta!.innerInstructions;
-    console.log('innerInstructions = ', innerinstructions);
-
-    // check if this is raydium swap trx
-    const raydiumPoolV4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
-    const jupiterAggregatorV6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
-    for (let i = 0; i < instructions.length; i++) {
-      // console.log("programid = ", instructions[i].programId.toString());
-      if (instructions[i].programId.toBase58() === raydiumPoolV4) {
-        // console.log('index = ', i);
-        for (let j = 0; j < innerinstructions!.length; j++) {
-          if (innerinstructions![j].index === i) {
-            // console.log("swap inner instructions, send = ", innerinstructions[j].instructions[0].parsed.info);
-            // console.log("swap inner instructions, receive = ", innerinstructions[j].instructions[1].parsed.info);
-            const sendToken = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[0] as ParsedInstruction).parsed.info.destination);
-            const sendAmount = (innerinstructions![j].instructions[0] as ParsedInstruction).parsed.info.amount;
-            const receiveToken = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[1] as ParsedInstruction).parsed.info.source);
-            const receiveAmount = (innerinstructions![j].instructions[1] as ParsedInstruction).parsed.info.amount;
-            const result = { isSwap: true, type: "raydium swap", sendToken: sendToken, sendAmount: sendAmount, receiveToken: receiveToken, receiveAmount: receiveAmount, blockTime: tx?.blockTime };
-            // console.log('swap info = ', result);
-            return result;
-          }
-        }
-      } else if (instructions[i].programId.toBase58() === jupiterAggregatorV6) {
-        console.log('index = ', i);
-        for (let j = 0; j < innerinstructions!.length; j++) {
-          if (innerinstructions![j].index === i) {
-            const length = innerinstructions![j].instructions.length;
-            let sendToken;
-            let sendAmount;
-            let receiveToken;
-            let receiveAmount;
-            for (let i = 0; i < length; i++) {
-              if ((innerinstructions![j].instructions[i] as ParsedInstruction).programId.toBase58() == 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') {
-                if ((innerinstructions![j].instructions[i] as ParsedInstruction).parsed.type == "transferChecked") {
-                  sendToken = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.destination);
-                  sendAmount = (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.tokenAmount.amount;
-                  break;
-                }
-
-                if ((innerinstructions![j].instructions[i] as ParsedInstruction).parsed.type == "transfer") {
-                  sendToken = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.destination);
-                  sendAmount = (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.amount;
-                  break;
-                }
-              }
-            }
-
-            for (let i = length - 1; i >= 0; i--) {
-              if ((innerinstructions![j].instructions[i] as ParsedInstruction).programId.toBase58() == 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') {
-                if ((innerinstructions![j].instructions[i] as ParsedInstruction).parsed.type == "transferChecked") {
-                  receiveToken = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.source);
-                  receiveAmount = (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.tokenAmount.amount;
-                  break;
-                }
-
-                if ((innerinstructions![j].instructions[i] as ParsedInstruction).parsed.type == "transfer") {
-                  receiveToken = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.source);
-                  receiveAmount = (innerinstructions![j].instructions[i] as ParsedInstruction).parsed.info.amount;
-                  break;
-                }
-              }
-            }
-
-            const result = { isSwap: true, type: "jupiter swap", sendToken: sendToken, sendAmount: sendAmount, receiveToken: receiveToken, receiveAmount: receiveAmount, blockTime: tx?.blockTime };
-            console.log('swap info = ', result);
-            return result;
-          }
-        }
-      }
-    }
-    return { isSwap: false, type: null, sendToken: null, sendAmount: null, receiveToken: null, receiveAmount: null, blockTime: null };;
-  } catch (error) {
-    console.log('getTokenSwapInfo, Error', error);
-    return { isSwap: false, type: null, sendToken: null, sendAmount: null, receiveToken: null, receiveAmount: null, blockTime: null };;
-  }
-}
-
 export const getSwapInfo = async (connection: Connection, signature: string) => {
   try {
     let tx: any;
-    let i = 0;
-    let retry = 50;
-    while (i < retry) {
+    const start = Date.now();
+    while (Date.now() - start < 300000) {
       tx = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
       if (tx != null && tx != undefined)
         break;
-      await sleep(100);
-      i++;
-      console.log(`solana.ts swapInfo, getParsedTransaction, retry number = ${i}, interval = 100ms`);
+      await sleep(1000);
     }
     // const blocktime = tx?.blockTime;
     const instructions = tx!.transaction.message.instructions;

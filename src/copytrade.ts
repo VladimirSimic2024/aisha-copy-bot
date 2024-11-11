@@ -1,7 +1,7 @@
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { CHAT_ID, CONNECTION, privateKey } from "./config";
 import { Position } from "./models/Position";
-import { getBalance, getPublicKey, getSwapInfo, jupiter_swap, WSOL_ADDRESS } from "./solana"
+import { getBalance, getPublicKey, getSwapInfo, jupiter_swap, pumpfun_buy, pumpfun_sell, WSOL_ADDRESS } from "./solana"
 import { bot } from "./bot";
 
 export const processSignature = async (signature: string) => {
@@ -23,8 +23,12 @@ export const processSignature = async (signature: string) => {
                 rate = 0.05; // 5% when second buy
             const buyAmount = Math.round(mySolBalance * rate);
             console.log('Buy SOL Amount = ', buyAmount / LAMPORTS_PER_SOL);
-            const swapResult = await jupiter_swap(CONNECTION, privateKey, WSOL_ADDRESS, targetSwapInfo.tokenAddress!, buyAmount);
-            if (swapResult.success && swapResult.signature) {
+            let swapResult;
+            if (targetSwapInfo.dex == "raydium")
+                swapResult = await jupiter_swap(CONNECTION, privateKey, WSOL_ADDRESS, targetSwapInfo.tokenAddress!, buyAmount);
+            else
+                swapResult = await pumpfun_buy(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, buyAmount);
+            if (swapResult && swapResult.success && swapResult.signature) {
                 const mySwapInfo = await getSwapInfo(CONNECTION, swapResult.signature);
                 bot.sendMessage(CHAT_ID, `Copy Buy\n\namount: ${buyAmount / LAMPORTS_PER_SOL} SOL\nTxHash:${swapResult.signature}`, { parse_mode: "HTML" });
                 if (position) {
@@ -56,9 +60,13 @@ export const processSignature = async (signature: string) => {
                 return;
             }
             const rate = targetSwapInfo.tokenAmount! / position.targetTokenAmount;
-            const mySellTokenAmount = Math.round(position.myTokenAmount * rate);
-            const swapResult = await jupiter_swap(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, WSOL_ADDRESS, mySellTokenAmount);
-            if (swapResult.success && swapResult.signature) {
+            const mySellTokenAmount = Math.floor(position.myTokenAmount * rate);
+            let swapResult;
+            if (targetSwapInfo.dex == "raydium")
+                swapResult = await jupiter_swap(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, WSOL_ADDRESS, mySellTokenAmount);
+            else
+                swapResult = await pumpfun_sell(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, mySellTokenAmount);
+            if (swapResult && swapResult.success && swapResult.signature) {
                 const mySwapInfo = await getSwapInfo(CONNECTION, swapResult.signature);
                 bot.sendMessage(CHAT_ID, `Copy Sell\n\nAmount: ${mySwapInfo!.solAmount! / LAMPORTS_PER_SOL} SOL\nTxHash:${swapResult.signature}`, { parse_mode: "HTML" });
                 position.targetTokenAmount = position.targetTokenAmount - targetSwapInfo.tokenAmount!;
