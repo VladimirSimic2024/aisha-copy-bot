@@ -49,6 +49,7 @@ import {
 
 import axios from 'axios';
 import { sha256 } from "js-sha256";
+import { CONNECTION } from './config';
 
 export const DEFAULT_COMMITMENT: Commitment = "finalized";
 export const DEFAULT_FINALITY: Finality = "finalized";
@@ -109,22 +110,27 @@ export function isNumber(inputText: string | undefined) {
   return !isNaN(parseFloat(inputText)) && isFinite(Number(inputText));
 }
 
-export async function getTokenAddressFromTokenAccount(connection: Connection, tokenAccountAddress: string) {
+export async function getTokenAddressAndOwnerFromTokenAccount(tokenAccountAddress: string) {
   try {
+    // console.log('tokenAccountAddress = ', tokenAccountAddress);
     const tokenAccountPubkey = new PublicKey(tokenAccountAddress);
-    const accountInfo = await connection.getAccountInfo(tokenAccountPubkey);
+    const accountInfo = await CONNECTION.getAccountInfo(tokenAccountPubkey);
 
     if (accountInfo === null) {
-      throw new Error('Token account not found');
+      return null;
     }
 
     const accountData = AccountLayout.decode(accountInfo.data);
     const mintAddress = new PublicKey(accountData.mint);
 
-    // console.log(`Token address (mint address) for token account ${tokenAccountAddress}: ${mintAddress.toBase58()}`);
-    return mintAddress.toBase58();
+    const tokenAddress = mintAddress.toBase58();
+    const ownerAddress = new PublicKey(accountData.owner).toBase58();
+
+    return { tokenAddress, ownerAddress };
+
   } catch (error) {
     console.error('Error fetching token address:', error);
+    return null;
   }
 }
 
@@ -586,77 +592,6 @@ export const getTokenPrice = async (tokenAddress: string, quoteTokenAddress: str
   return null;
 }
 
-export const isPumpFunSwapTx = async (connection: Connection, signature: string) => {
-  try {
-
-    const tx: any = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
-    const logs = tx.meta.logMessages;
-    const instructions = tx!.transaction.message.instructions;
-    const innerinstructions = tx!.meta!.innerInstructions
-
-    let isPumpFunSwap = false;
-    let direction;
-    let token;
-    let tokenAmount = 0;
-    let solAmount = 0;
-
-    for (let i = 0; i < logs.length; i++) {
-      if (logs[i].includes('Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P invoke')) {
-        if (logs[i + 1] == 'Program log: Instruction: Buy') {
-          isPumpFunSwap = true;
-          direction = "buy";
-        } else if (logs[i + 1] == 'Program log: Instruction: Sell') {
-          isPumpFunSwap = true;
-          direction = "sell";
-        }
-        break;
-      }
-    }
-
-    if (!isPumpFunSwap)
-      return { isPumpFunSwap: false, direction: null, token: null, solAmount: null };
-
-    for (let i = 0; i < instructions.length; i++) {
-      if (instructions[i].programId.toBase58() === "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P") {
-        for (let j = 0; j < innerinstructions!.length; j++) {
-          if (innerinstructions![j].index === i) {
-
-            if (direction == "buy") {
-              token = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[0] as ParsedInstruction).parsed.info.destination);
-              tokenAmount = Number((innerinstructions![j].instructions[0] as any).parsed.info.amount);
-              solAmount = (innerinstructions![j].instructions[1] as any).parsed.info.lamports;
-            } else {
-              token = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[0] as ParsedInstruction).parsed.info.source);
-              tokenAmount = Number((innerinstructions![j].instructions[0] as any).parsed.info.amount);
-              solAmount = 0;
-            }
-            return { isPumpFunSwap, direction, token, tokenAmount, solAmount };
-          }
-        }
-      } else if (instructions[i].programId.toBase58() === "BSfD6SHZigAfDWSjzD5Q41jw8LmKwtmjskPH9XW1mrRW") {
-        for (let j = 0; j < innerinstructions!.length; j++) {
-          if (innerinstructions![j].index === i) {
-            if (direction == "buy") {
-              token = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[1] as ParsedInstruction).parsed.info.destination);
-              tokenAmount = Number((innerinstructions![j].instructions[1] as any).parsed.info.amount);
-              solAmount = (innerinstructions![j].instructions[2] as any).parsed.info.lamports;
-            } else {
-              token = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[1] as ParsedInstruction).parsed.info.source);
-              tokenAmount = Number((innerinstructions![j].instructions[1] as any).parsed.info.amount);
-              solAmount = 0;
-            }
-            return { isPumpFunSwap, direction, token, tokenAmount, solAmount };
-          }
-        }
-      }
-    }
-    return { isPumpFunSwap: false, direction, token, tokenAmount, solAmount };
-  } catch (error) {
-    console.log('error = ', error);
-    return null;
-  }
-};
-
 export const getSwapInfo = async (connection: Connection, signature: string) => {
   try {
     let tx: any;
@@ -682,7 +617,90 @@ export const getSwapInfo = async (connection: Connection, signature: string) => 
     let type;
 
     for (let i = 0; i < logs!.length; i++) {
-      if (logs![i].includes('Program 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8 invoke')) { // raydium
+      if (logs![i].includes('JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 invoke')) { // Jupiter
+        isSwap = true;
+        dex = 'jupiter';
+        for (let i = 0; i < instructions.length; i++) {
+          if (instructions[i].programId.toBase58() == "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4") {
+            console.log('index = ', i);
+            for (let j = 0; j < innerinstructions!.length; j++) {
+              if (innerinstructions![j].index === i) {
+                const length = innerinstructions![j].instructions.length;
+                let sendToken;
+                let sendAmount;
+                let receiveToken;
+                let receiveAmount;
+                for (let i = 0; i < length; i++) {
+                  if ((innerinstructions![j].instructions[i] as any).programId.toBase58() == 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') {
+                    if ((innerinstructions![j].instructions[i] as any).parsed.type == "transferChecked") {
+                      const data = await getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[i] as any).parsed.info.destination);
+                      // console.log('accountData = ', data);
+                      if (data && data.ownerAddress != "45ruCyfdRkWpRNGEqWzjCiXRHkZs8WXCLQ67Pnpye7Hp") { // Jutpiter Partner Referral Fee Vault
+                        sendToken = data.tokenAddress;
+                        sendAmount = (innerinstructions![j].instructions[i] as any).parsed.info.tokenAmount.amount;
+                        break;
+                      }
+                    }
+
+                    if ((innerinstructions![j].instructions[i] as any).parsed.type == "transfer") {
+                      const data = await getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[i] as any).parsed.info.destination);
+                      // console.log('accountData = ', data);
+                      if (data && data.ownerAddress != "45ruCyfdRkWpRNGEqWzjCiXRHkZs8WXCLQ67Pnpye7Hp") {
+                        sendToken = data.tokenAddress;
+                        sendAmount = (innerinstructions![j].instructions[i] as any).parsed.info.amount;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                console.log('tokenAddress = ', sendToken);
+                console.log('tokenAmount: ', sendAmount);
+
+                for (let i = length - 1; i >= 0; i--) {
+                  if ((innerinstructions![j].instructions[i] as any).programId.toBase58() == 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') {
+                    if ((innerinstructions![j].instructions[i] as any).parsed.type == "transferChecked") {
+                      const data = await getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[i] as any).parsed.info.source);
+                      // console.log('accountData = ', data);
+                      if (data) {
+                        receiveToken = data?.tokenAddress;
+                        receiveAmount = (innerinstructions![j].instructions[i] as any).parsed.info.tokenAmount.amount;
+                        break;
+                      }
+                    }
+
+                    if ((innerinstructions![j].instructions[i] as any).parsed.type == "transfer") {
+                      const data = await getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[i] as any).parsed.info.source);
+                      // console.log('accountData = ', data);
+                      if (data) {
+                        receiveToken = data.tokenAddress;
+                        receiveAmount = (innerinstructions![j].instructions[i] as any).parsed.info.amount;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                console.log('receiveToken = ', receiveToken);
+                console.log('receiveAmount = ', receiveAmount);
+
+                if (sendToken == 'So11111111111111111111111111111111111111112') {
+                  type = "buy";
+                  tokenAddress = receiveToken;
+                  solAmount = Number(sendAmount);
+                  tokenAmount = Number(receiveAmount);
+                } else if (receiveToken == 'So11111111111111111111111111111111111111112') {
+                  type = "sell";
+                  tokenAddress = sendToken;
+                  solAmount = Number(receiveAmount);
+                  tokenAmount = Number(sendAmount);
+                }
+                return { isSwap, dex, type, tokenAddress, solAmount, tokenAmount, signer };
+              }
+            }
+          }
+        }
+      } else if (logs![i].includes('Program 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8 invoke')) { // only raydium
         isSwap = true;
         dex = 'raydium';
         // check instructions of raydium swap
@@ -691,10 +709,13 @@ export const getSwapInfo = async (connection: Connection, signature: string) => 
             for (let j = 0; j < innerinstructions!.length; j++) {
               if (innerinstructions![j].index === i) {
 
-                const [sendToken, receiveToken] = await Promise.all([
-                  getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[0] as any).parsed.info.destination),
-                  getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[1] as any).parsed.info.source)
+                const [sendData, receiveData] = await Promise.all([
+                  getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[0] as any).parsed.info.destination),
+                  getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[1] as any).parsed.info.source)
                 ]);
+
+                const sendToken = sendData?.tokenAddress;
+                const receiveToken = receiveData?.tokenAddress;
 
                 const sendAmount = (innerinstructions![j].instructions[0] as any).parsed.info.amount;
                 const receiveAmount = (innerinstructions![j].instructions[1] as any).parsed.info.amount;
@@ -721,10 +742,14 @@ export const getSwapInfo = async (connection: Connection, signature: string) => 
           const instructions = innerinstructions![i].instructions;
           for (let j = 0; j < instructions.length; j++) {
             if (instructions[j].programId.toBase58() == '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8') {
-              const [sendToken, receiveToken] = await Promise.all([
-                getTokenAddressFromTokenAccount(connection, (instructions[j + 1] as any).parsed.info.destination),
-                getTokenAddressFromTokenAccount(connection, (instructions[j + 2] as any).parsed.info.source)
+              const [sendData, receiveData] = await Promise.all([
+                getTokenAddressAndOwnerFromTokenAccount((instructions[j + 1] as any).parsed.info.destination),
+                getTokenAddressAndOwnerFromTokenAccount((instructions[j + 2] as any).parsed.info.source)
               ])
+
+              const sendToken = sendData?.tokenAddress;
+              const receiveToken = receiveData?.tokenAddress;
+
               const sendAmount = (instructions[j + 1] as any).parsed.info.amount;
               const receiveAmount = (instructions[j + 2] as any).parsed.info.amount;
               if (sendToken == 'So11111111111111111111111111111111111111112') {
@@ -752,7 +777,8 @@ export const getSwapInfo = async (connection: Connection, signature: string) => 
             if (instructions[i].programId.toBase58() == "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P") {
               for (let j = 0; j < innerinstructions!.length; j++) {
                 if (innerinstructions![j].index === i) {
-                  const tokenAddress = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[0] as any).parsed.info.destination);
+                  const accountData = await getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[0] as any).parsed.info.destination);
+                  const tokenAddress = accountData?.tokenAddress;
                   const tokenAmount = Number((innerinstructions![j].instructions[0] as any).parsed.info.amount);
                   const data = (innerinstructions![j].instructions[1] as any).data;
                   const bytedata = bs58.decode(data) as any;
@@ -771,7 +797,8 @@ export const getSwapInfo = async (connection: Connection, signature: string) => 
             const instructions = innerinstructions![i].instructions;
             for (let j = 0; j < instructions.length; j++) {
               if (instructions[j].programId.toBase58() == '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P') {
-                const tokenAddress = await getTokenAddressFromTokenAccount(connection, (instructions[j + 1] as any).parsed.info.destination);
+                const accountData = await getTokenAddressAndOwnerFromTokenAccount((instructions[j + 1] as any).parsed.info.destination);
+                const tokenAddress = accountData?.tokenAddress;
                 const tokenAmount = Number((instructions[j + 1] as any).parsed.info.amount);
                 const data = (instructions[j + 2] as any).data;
                 const bytedata = bs58.decode(data) as any;
@@ -791,7 +818,8 @@ export const getSwapInfo = async (connection: Connection, signature: string) => 
               for (let j = 0; j < innerinstructions!.length; j++) {
                 if (innerinstructions![j].index === i) {
                   const tokenAmount = Number((innerinstructions![j].instructions[0] as any).parsed.info.amount);
-                  const tokenAddress = await getTokenAddressFromTokenAccount(connection, (innerinstructions![j].instructions[0] as any).parsed.info.source);
+                  const accountData = await getTokenAddressAndOwnerFromTokenAccount((innerinstructions![j].instructions[0] as any).parsed.info.source);
+                  const tokenAddress = accountData?.tokenAddress;
                   const solAmount = Number((innerinstructions![j].instructions[1] as any).parsed.info.lamports);
                   return { isSwap, dex, type, tokenAddress, solAmount, tokenAmount, signer };
                 }
@@ -805,7 +833,8 @@ export const getSwapInfo = async (connection: Connection, signature: string) => 
             for (let j = 0; j < instructions.length; j++) {
               if (instructions[j].programId.toBase58() == '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P') {
                 const tokenAmount = Number((instructions[j + 1] as any).parsed.info.amount);
-                const tokenAddress = await getTokenAddressFromTokenAccount(connection, (instructions[j + 1] as any).parsed.info.source);
+                const accountData = await getTokenAddressAndOwnerFromTokenAccount((instructions[j + 1] as any).parsed.info.source);
+                const tokenAddress = accountData?.tokenAddress;
                 const solAmount = Number((instructions[j + 2] as any).parsed.info.lamports);
                 return { isSwap, dex, type, tokenAddress, solAmount, tokenAmount, signer };
               }

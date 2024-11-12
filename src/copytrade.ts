@@ -8,32 +8,18 @@ export const processSignature = async (swapInfo: any) => {
 
     let targetSwapInfo: any = null;
 
-    if (swapInfo.inputToken == WSOL_ADDRESS) {
-        targetSwapInfo.isSwap = true;
-        targetSwapInfo.signer = swapInfo.signer;
-        targetSwapInfo.type = "buy";
-        targetSwapInfo.solAmount = Number(swapInfo.inputAmount) * LAMPORTS_PER_SOL;
-        targetSwapInfo.tokenAmount = Number(swapInfo.outAmount) * Math.pow(10, swapInfo.outDecimal);
-        targetSwapInfo.tokenAddress = swapInfo.outToken;
-    } else if (swapInfo.outToken == WSOL_ADDRESS) {
-        targetSwapInfo.isSwap = true;
-        targetSwapInfo.signer = swapInfo.signer;
-        targetSwapInfo.type = "sell";
-        targetSwapInfo.solAmount = Number(swapInfo.outAmount) * LAMPORTS_PER_SOL;
-        targetSwapInfo.tokenAmount = Number(swapInfo.inputAmount) * Math.pow(10, swapInfo.inputDecimal);
-        targetSwapInfo.tokenAddress = swapInfo.inputToken;
-    }
-
-    if (swapInfo.isPumpFun) {
-        targetSwapInfo.dex = "pumpfun"
-    } else {
-        targetSwapInfo.dex = "raydium"
-    }
+    targetSwapInfo = await getSwapInfo(CONNECTION, swapInfo.signature);
 
     console.log('targetSwapInfo = ', targetSwapInfo);
 
-
-    if (targetSwapInfo && targetSwapInfo.isSwap) {
+    if (targetSwapInfo
+        && targetSwapInfo.isSwap
+        && targetSwapInfo.dex
+        && targetSwapInfo.type
+        && targetSwapInfo.tokenAddress
+        && targetSwapInfo.solAmount
+        && targetSwapInfo.tokenAmount
+        && targetSwapInfo.signer) {
 
         if (targetSwapInfo.type == "buy") {
             const targetSolBalance = await getBalance(CONNECTION, targetSwapInfo.signer, true);
