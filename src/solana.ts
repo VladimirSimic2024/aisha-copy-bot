@@ -276,7 +276,7 @@ export const pumpfun_buy = async (connection: Connection, privateKey: string, to
       return null;
     }
   } catch (error) {
-    console.log('jupiter swap failed');
+    console.log('pumpfun buy failed');
     return null;
   }
 }
@@ -310,7 +310,7 @@ export const pumpfun_sell = async (connection: Connection, privateKey: string, t
       return null;
     }
   } catch (error) {
-    console.log('jupiter swap failed');
+    console.log('pumpfun sell failed');
     return null;
   }
 }

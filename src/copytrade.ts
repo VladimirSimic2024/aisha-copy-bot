@@ -37,7 +37,7 @@ export const processSignature = async (swapInfo: any) => {
             const buyAmount = Math.round(mySolBalance * rate);
             console.log('Buy SOL Amount = ', buyAmount / LAMPORTS_PER_SOL);
             let swapResult;
-            if (targetSwapInfo.dex == "raydium")
+            if (targetSwapInfo.dex != "pumpfun")
                 swapResult = await jupiter_swap(CONNECTION, privateKey, WSOL_ADDRESS, targetSwapInfo.tokenAddress!, buyAmount);
             else
                 swapResult = await pumpfun_buy(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, buyAmount);
@@ -75,7 +75,7 @@ export const processSignature = async (swapInfo: any) => {
             const rate = targetSwapInfo.tokenAmount! / position.targetTokenAmount;
             const mySellTokenAmount = Math.floor(position.myTokenAmount * rate);
             let swapResult;
-            if (targetSwapInfo.dex == "raydium")
+            if (targetSwapInfo.dex != "pumpfun")
                 swapResult = await jupiter_swap(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, WSOL_ADDRESS, mySellTokenAmount);
             else
                 swapResult = await pumpfun_sell(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, mySellTokenAmount);
