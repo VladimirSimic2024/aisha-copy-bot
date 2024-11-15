@@ -2,7 +2,6 @@ import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { CHAT_ID, CONNECTION, privateKey } from "./config";
 import { Position } from "./models/Position";
 import { getBalance, getPublicKey, getSwapInfo, jupiter_swap, pumpfun_buy, pumpfun_sell, WSOL_ADDRESS } from "./solana"
-import { bot } from "./bot";
 
 export const processSignature = async (swapInfo: any) => {
 
@@ -28,7 +27,7 @@ export const processSignature = async (swapInfo: any) => {
             const mySolBalance = await getBalance(CONNECTION, myWallet!, true);
             if (mySolBalance < 5000000) {
                 console.log('Insufficient SOL balance');
-                bot.sendMessage(CHAT_ID, 'Insufficient SOL balance');
+                // bot.sendMessage(CHAT_ID, 'Insufficient SOL balance');
                 return;
             }
             const position = await Position.findOne({ targetWallet: targetSwapInfo.signer, tokenAddress: targetSwapInfo.tokenAddress });
@@ -43,7 +42,7 @@ export const processSignature = async (swapInfo: any) => {
                 swapResult = await pumpfun_buy(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, buyAmount);
             if (swapResult && swapResult.success && swapResult.signature) {
                 const mySwapInfo = await getSwapInfo(CONNECTION, swapResult.signature);
-                bot.sendMessage(CHAT_ID, `Copy Buy\n\namount: ${buyAmount / LAMPORTS_PER_SOL} SOL\nTxHash:${swapResult.signature}`, { parse_mode: "HTML" });
+                // bot.sendMessage(CHAT_ID, `Copy Buy\n\namount: ${buyAmount / LAMPORTS_PER_SOL} SOL\nTxHash:${swapResult.signature}`, { parse_mode: "HTML" });
                 if (position) {
                     position.targetTokenAmount = position.targetTokenAmount + targetSwapInfo.tokenAmount!;
                     position.myTokenAmount = position.myTokenAmount + mySwapInfo?.tokenAmount!;
@@ -80,8 +79,8 @@ export const processSignature = async (swapInfo: any) => {
             else
                 swapResult = await pumpfun_sell(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, mySellTokenAmount);
             if (swapResult && swapResult.success && swapResult.signature) {
-                const mySwapInfo = await getSwapInfo(CONNECTION, swapResult.signature);
-                bot.sendMessage(CHAT_ID, `Copy Sell\n\nAmount: ${mySwapInfo!.solAmount! / LAMPORTS_PER_SOL} SOL\nTxHash:${swapResult.signature}`, { parse_mode: "HTML" });
+                // const mySwapInfo = await getSwapInfo(CONNECTION, swapResult.signature);
+                // bot.sendMessage(CHAT_ID, `Copy Sell\n\nAmount: ${mySwapInfo!.solAmount! / LAMPORTS_PER_SOL} SOL\nTxHash:${swapResult.signature}`, { parse_mode: "HTML" });
                 position.targetTokenAmount = position.targetTokenAmount - targetSwapInfo.tokenAmount!;
                 position.myTokenAmount = position.myTokenAmount - mySellTokenAmount;
                 position.save();
