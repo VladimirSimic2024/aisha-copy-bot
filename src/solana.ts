@@ -20,11 +20,6 @@ import {
 } from "@solana/web3.js";
 
 import {
-  isValidAddress,
-  isInValidKeyPair,
-} from "@solana-common/utils";
-
-import {
   TOKEN_PROGRAM_ID,
   AccountLayout,
   TOKEN_2022_PROGRAM_ID,
@@ -324,10 +319,6 @@ export async function sendBundle(
 ) {
   const jito_validator_wallet = await getRandomValidator();
   try {
-    if (isInValidKeyPair(payer)) {
-      console.log('SendBundle invalid keypair');
-      return false;
-    }
     const jitoFee_message = new TransactionMessage({
       payerKey: payer.publicKey,
       recentBlockhash: lastestBlockhash.blockhash,
