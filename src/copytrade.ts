@@ -36,10 +36,18 @@ export const processSignature = async (swapInfo: any) => {
             const buyAmount = Math.round(mySolBalance * rate);
             console.log('Buy SOL Amount = ', buyAmount / LAMPORTS_PER_SOL);
             let swapResult;
-            if (targetSwapInfo.dex != "pumpfun")
-                swapResult = await jupiter_swap(CONNECTION, privateKey, WSOL_ADDRESS, targetSwapInfo.tokenAddress!, buyAmount);
-            else
-                swapResult = await pumpfun_buy(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, buyAmount);
+            let retry = 0;
+            while (retry < 5) {
+                if (targetSwapInfo.dex != "pumpfun")
+                    swapResult = await jupiter_swap(CONNECTION, privateKey, WSOL_ADDRESS, targetSwapInfo.tokenAddress!, buyAmount);
+                else
+                    swapResult = await pumpfun_buy(CONNECTION, privateKey, targetSwapInfo.tokenAddress!, buyAmount);
+                
+                if (swapResult && swapResult.success)
+                    break;
+                retry++;
+            }
+
             if (swapResult && swapResult.success && swapResult.signature) {
                 const mySwapInfo = await getSwapInfo(CONNECTION, swapResult.signature);
                 // bot.sendMessage(CHAT_ID, `Copy Buy\n\namount: ${buyAmount / LAMPORTS_PER_SOL} SOL\nTxHash:${swapResult.signature}`, { parse_mode: "HTML" });
